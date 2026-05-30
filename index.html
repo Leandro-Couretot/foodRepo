@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stock del Hogar</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f5f5f0;
+      --card: #ffffff;
+      --border: #e0e0d8;
+      --text: #1a1a1a;
+      --muted: #6b6b6b;
+      --comprado: #2d7d46;
+      --en-uso: #1a6fa8;
+      --descartado: #b04030;
+      --comprado-bg: #eaf5ee;
+      --en-uso-bg: #e8f2fa;
+      --descartado-bg: #faece9;
+      --shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    header {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    header h1 { font-size: 1.2rem; font-weight: 600; }
+    header span { font-size: 1.4rem; }
+
+    .main { max-width: 800px; margin: 0 auto; padding: 24px 16px; }
+
+    /* Scan area */
+    .scan-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow);
+    }
+
+    .scan-card h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 16px; }
+
+    .scan-input-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    #barcode-input {
+      flex: 1;
+      padding: 12px 16px;
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      font-size: 1.1rem;
+      font-family: monospace;
+      transition: border-color 0.15s;
+      outline: none;
+    }
+
+    #barcode-input:focus { border-color: var(--en-uso); }
+
+    #manual-btn {
+      padding: 12px 18px;
+      background: var(--text);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      white-space: nowrap;
+    }
+
+    #manual-btn:hover { opacity: 0.85; }
+
+    /* Product panel */
+    #product-panel {
+      display: none;
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+    }
+
+    .product-info {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+
+    .product-img {
+      width: 72px;
+      height: 72px;
+      object-fit: contain;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #fafafa;
+      flex-shrink: 0;
+    }
+
+    .product-img-placeholder {
+      width: 72px;
+      height: 72px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: #f0f0ec;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      flex-shrink: 0;
+    }
+
+    .product-details { flex: 1; }
+    .product-name { font-size: 1.1rem; font-weight: 600; margin-bottom: 4px; }
+    .product-brand { font-size: 0.9rem; color: var(--muted); margin-bottom: 4px; }
+    .product-barcode { font-size: 0.8rem; color: var(--muted); font-family: monospace; }
+
+    .action-buttons {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .action-btn {
+      flex: 1;
+      min-width: 120px;
+      padding: 14px 10px;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 0.95rem;
+      font-weight: 600;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+
+    .action-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+    .action-btn:active { transform: translateY(0); }
+
+    .action-btn .icon { font-size: 1.5rem; }
+
+    .btn-comprado { background: var(--comprado-bg); color: var(--comprado); }
+    .btn-en-uso   { background: var(--en-uso-bg);   color: var(--en-uso); }
+    .btn-descartado { background: var(--descartado-bg); color: var(--descartado); }
+
+    .status-msg {
+      margin-top: 12px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      display: none;
+    }
+
+    .status-msg.success { background: var(--comprado-bg); color: var(--comprado); }
+    .status-msg.error   { background: var(--descartado-bg); color: var(--descartado); }
+
+    /* Stats */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      text-align: center;
+      box-shadow: var(--shadow);
+    }
+
+    .stat-count { font-size: 2rem; font-weight: 700; }
+    .stat-label { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+
+    .stat-card.comprado .stat-count { color: var(--comprado); }
+    .stat-card.en-uso   .stat-count { color: var(--en-uso); }
+    .stat-card.descartado .stat-count { color: var(--descartado); }
+
+    /* Inventory table */
+    .inventory-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+      margin-bottom: 24px;
+    }
+
+    .inventory-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .inventory-header h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+
+    .filter-tabs { display: flex; gap: 6px; }
+
+    .filter-tab {
+      padding: 5px 12px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: transparent;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.15s;
+    }
+
+    .filter-tab.active { background: var(--text); color: white; border-color: var(--text); }
+
+    .inventory-list { max-height: 480px; overflow-y: auto; }
+
+    .inv-item {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.1s;
+    }
+
+    .inv-item:last-child { border-bottom: none; }
+    .inv-item:hover { background: #fafaf8; }
+
+    .inv-item-img {
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: #fafafa;
+      flex-shrink: 0;
+    }
+
+    .inv-item-img-placeholder {
+      width: 40px;
+      height: 40px;
+      border-radius: 6px;
+      background: #f0f0ec;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      flex-shrink: 0;
+    }
+
+    .inv-item-info { flex: 1; min-width: 0; }
+    .inv-item-name { font-size: 0.95rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .inv-item-meta { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
+
+    .inv-item-badge {
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .badge-comprado   { background: var(--comprado-bg);   color: var(--comprado); }
+    .badge-en-uso     { background: var(--en-uso-bg);     color: var(--en-uso); }
+    .badge-descartado { background: var(--descartado-bg); color: var(--descartado); }
+
+    .inv-item-date { font-size: 0.75rem; color: var(--muted); flex-shrink: 0; }
+
+    .inv-item-del {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 1rem;
+      padding: 4px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+
+    .inv-item-del:hover { color: var(--descartado); background: var(--descartado-bg); }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 20px;
+      color: var(--muted);
+    }
+
+    .empty-state .icon { font-size: 3rem; margin-bottom: 12px; }
+    .empty-state p { font-size: 0.95rem; }
+
+    /* History */
+    .history-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    .history-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .history-header h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+
+    #clear-history-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 5px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+
+    #clear-history-btn:hover { border-color: var(--descartado); color: var(--descartado); }
+
+    .history-list { max-height: 300px; overflow-y: auto; }
+
+    .history-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.85rem;
+    }
+
+    .history-item:last-child { border-bottom: none; }
+
+    .history-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .dot-comprado   { background: var(--comprado); }
+    .dot-en-uso     { background: var(--en-uso); }
+    .dot-descartado { background: var(--descartado); }
+
+    .history-text { flex: 1; }
+    .history-time { color: var(--muted); white-space: nowrap; }
+
+    @media (max-width: 500px) {
+      .action-buttons { flex-direction: column; }
+      .stats-row { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .stat-count { font-size: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <span>🏠</span>
+  <h1>Stock del Hogar</h1>
+</header>
+
+<div class="main">
+
+  <!-- Scan Card -->
+  <div class="scan-card">
+    <h2>Escanear producto</h2>
+    <div class="scan-input-row">
+      <input
+        id="barcode-input"
+        type="text"
+        inputmode="numeric"
+        placeholder="Escanear o escribir código de barras..."
+        autocomplete="off"
+        autofocus
+      />
+      <button id="manual-btn">Buscar</button>
+    </div>
+
+    <div id="product-panel">
+      <div class="product-info">
+        <div id="product-img-wrap"></div>
+        <div class="product-details">
+          <div class="product-name" id="product-name">—</div>
+          <div class="product-brand" id="product-brand"></div>
+          <div class="product-barcode" id="product-barcode"></div>
+        </div>
+      </div>
+      <div class="action-buttons">
+        <button class="action-btn btn-comprado" onclick="registerAction('comprado')">
+          <span class="icon">🛒</span>Comprado
+        </button>
+        <button class="action-btn btn-en-uso" onclick="registerAction('en-uso')">
+          <span class="icon">📦</span>En uso
+        </button>
+        <button class="action-btn btn-descartado" onclick="registerAction('descartado')">
+          <span class="icon">🗑️</span>Descartado
+        </button>
+      </div>
+      <div id="status-msg" class="status-msg"></div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-row">
+    <div class="stat-card comprado">
+      <div class="stat-count" id="count-comprado">0</div>
+      <div class="stat-label">🛒 Comprados</div>
+    </div>
+    <div class="stat-card en-uso">
+      <div class="stat-count" id="count-en-uso">0</div>
+      <div class="stat-label">📦 En uso</div>
+    </div>
+    <div class="stat-card descartado">
+      <div class="stat-count" id="count-descartado">0</div>
+      <div class="stat-label">🗑️ Descartados</div>
+    </div>
+  </div>
+
+  <!-- Inventory -->
+  <div class="inventory-card">
+    <div class="inventory-header">
+      <h2>Inventario actual</h2>
+      <div class="filter-tabs">
+        <button class="filter-tab active" data-filter="all" onclick="setFilter('all')">Todos</button>
+        <button class="filter-tab" data-filter="comprado" onclick="setFilter('comprado')">Comprado</button>
+        <button class="filter-tab" data-filter="en-uso" onclick="setFilter('en-uso')">En uso</button>
+        <button class="filter-tab" data-filter="descartado" onclick="setFilter('descartado')">Descartado</button>
+      </div>
+    </div>
+    <div class="inventory-list" id="inventory-list"></div>
+  </div>
+
+  <!-- History -->
+  <div class="history-card">
+    <div class="history-header">
+      <h2>Historial de eventos</h2>
+      <button id="clear-history-btn" onclick="clearHistory()">Limpiar historial</button>
+    </div>
+    <div class="history-list" id="history-list"></div>
+  </div>
+
+</div>
+
+<script>
+  // ── Storage ──────────────────────────────────────────────────────────────
+  const LS_INVENTORY = 'hogar_inventory';
+  const LS_HISTORY   = 'hogar_history';
+
+  function loadInventory() {
+    try { return JSON.parse(localStorage.getItem(LS_INVENTORY)) || {}; } catch { return {}; }
+  }
+
+  function saveInventory(inv) {
+    localStorage.setItem(LS_INVENTORY, JSON.stringify(inv));
+  }
+
+  function loadHistory() {
+    try { return JSON.parse(localStorage.getItem(LS_HISTORY)) || []; } catch { return []; }
+  }
+
+  function saveHistory(h) {
+    localStorage.setItem(LS_HISTORY, JSON.stringify(h));
+  }
+
+  // ── State ─────────────────────────────────────────────────────────────────
+  let currentProduct = null;
+  let activeFilter = 'all';
+
+  // ── Barcode input ─────────────────────────────────────────────────────────
+  const barcodeInput = document.getElementById('barcode-input');
+  const manualBtn    = document.getElementById('manual-btn');
+
+  barcodeInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') lookupBarcode();
+  });
+
+  manualBtn.addEventListener('click', lookupBarcode);
+
+  // Keep focus on input so scanner always types into it
+  document.addEventListener('click', e => {
+    if (!e.target.closest('button') || e.target === manualBtn) {
+      barcodeInput.focus();
+    }
+  });
+
+  // ── Open Food Facts lookup ────────────────────────────────────────────────
+  async function lookupBarcode() {
+    const code = barcodeInput.value.trim();
+    if (!code) return;
+
+    showStatus('Buscando...', '');
+
+    try {
+      const res  = await fetch(`https://world.openfoodfacts.org/api/v0/product/${code}.json`);
+      const data = await res.json();
+
+      if (data.status === 1) {
+        const p = data.product;
+        currentProduct = {
+          barcode:  code,
+          name:     p.product_name || p.product_name_es || 'Producto sin nombre',
+          brand:    p.brands || '',
+          image:    p.image_small_url || p.image_url || '',
+        };
+      } else {
+        // Product not found in OFF — still allow manual registration
+        currentProduct = {
+          barcode: code,
+          name:    'Producto desconocido',
+          brand:   '',
+          image:   '',
+        };
+      }
+    } catch {
+      currentProduct = {
+        barcode: code,
+        name:    'Producto desconocido',
+        brand:   '',
+        image:   '',
+      };
+    }
+
+    renderProductPanel();
+    hideStatus();
+  }
+
+  function renderProductPanel() {
+    if (!currentProduct) return;
+
+    document.getElementById('product-name').textContent    = currentProduct.name;
+    document.getElementById('product-brand').textContent   = currentProduct.brand;
+    document.getElementById('product-barcode').textContent = currentProduct.barcode;
+
+    const wrap = document.getElementById('product-img-wrap');
+    if (currentProduct.image) {
+      wrap.innerHTML = `<img class="product-img" src="${currentProduct.image}" alt="" />`;
+    } else {
+      wrap.innerHTML = `<div class="product-img-placeholder">📦</div>`;
+    }
+
+    document.getElementById('product-panel').style.display = 'block';
+  }
+
+  // ── Register action ───────────────────────────────────────────────────────
+  function registerAction(action) {
+    if (!currentProduct) return;
+
+    const inv = loadInventory();
+    const now = new Date().toISOString();
+
+    inv[currentProduct.barcode] = {
+      ...currentProduct,
+      estado:    action,
+      updatedAt: now,
+    };
+
+    saveInventory(inv);
+
+    // Append to history
+    const hist = loadHistory();
+    hist.unshift({
+      barcode:  currentProduct.barcode,
+      name:     currentProduct.name,
+      action,
+      ts:       now,
+    });
+    saveHistory(hist.slice(0, 200)); // keep last 200
+
+    const labels = { 'comprado': 'Comprado', 'en-uso': 'En uso', 'descartado': 'Descartado' };
+    showStatus(`✓ ${currentProduct.name} → ${labels[action]}`, 'success');
+
+    barcodeInput.value = '';
+    currentProduct = null;
+    setTimeout(() => {
+      document.getElementById('product-panel').style.display = 'none';
+      hideStatus();
+    }, 1800);
+
+    renderAll();
+  }
+
+  // ── Status message ────────────────────────────────────────────────────────
+  function showStatus(msg, type) {
+    const el = document.getElementById('status-msg');
+    el.textContent = msg;
+    el.className   = 'status-msg' + (type ? ' ' + type : '');
+    el.style.display = 'block';
+  }
+
+  function hideStatus() {
+    document.getElementById('status-msg').style.display = 'none';
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  function setFilter(f) {
+    activeFilter = f;
+    document.querySelectorAll('.filter-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.filter === f);
+    });
+    renderInventory();
+  }
+
+  function renderAll() {
+    renderStats();
+    renderInventory();
+    renderHistory();
+  }
+
+  function renderStats() {
+    const inv = loadInventory();
+    const items = Object.values(inv);
+    document.getElementById('count-comprado').textContent   = items.filter(i => i.estado === 'comprado').length;
+    document.getElementById('count-en-uso').textContent     = items.filter(i => i.estado === 'en-uso').length;
+    document.getElementById('count-descartado').textContent = items.filter(i => i.estado === 'descartado').length;
+  }
+
+  function renderInventory() {
+    const inv  = loadInventory();
+    const list = document.getElementById('inventory-list');
+    let items  = Object.values(inv);
+
+    if (activeFilter !== 'all') {
+      items = items.filter(i => i.estado === activeFilter);
+    }
+
+    items.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+
+    if (!items.length) {
+      list.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">📋</div>
+          <p>No hay productos registrados aún.</p>
+        </div>`;
+      return;
+    }
+
+    list.innerHTML = items.map(item => {
+      const imgHtml = item.image
+        ? `<img class="inv-item-img" src="${item.image}" alt="" />`
+        : `<div class="inv-item-img-placeholder">📦</div>`;
+
+      const labels = { 'comprado': 'Comprado', 'en-uso': 'En uso', 'descartado': 'Descartado' };
+      const date   = new Date(item.updatedAt).toLocaleDateString('es-AR', { day:'2-digit', month:'short' });
+
+      return `
+        <div class="inv-item">
+          ${imgHtml}
+          <div class="inv-item-info">
+            <div class="inv-item-name">${escHtml(item.name)}</div>
+            <div class="inv-item-meta">${escHtml(item.brand || item.barcode)}</div>
+          </div>
+          <span class="inv-item-badge badge-${item.estado}">${labels[item.estado]}</span>
+          <span class="inv-item-date">${date}</span>
+          <button class="inv-item-del" onclick="deleteItem('${escHtml(item.barcode)}')" title="Eliminar">✕</button>
+        </div>`;
+    }).join('');
+  }
+
+  function renderHistory() {
+    const hist = loadHistory();
+    const list = document.getElementById('history-list');
+
+    if (!hist.length) {
+      list.innerHTML = `<div class="empty-state"><div class="icon">🕓</div><p>Sin eventos aún.</p></div>`;
+      return;
+    }
+
+    const labels = { 'comprado': 'Comprado', 'en-uso': 'En uso', 'descartado': 'Descartado' };
+
+    list.innerHTML = hist.map(ev => {
+      const d = new Date(ev.ts);
+      const timeStr = d.toLocaleDateString('es-AR', { day:'2-digit', month:'short' }) + ' ' +
+                      d.toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' });
+      return `
+        <div class="history-item">
+          <div class="history-dot dot-${ev.action}"></div>
+          <div class="history-text"><strong>${escHtml(ev.name)}</strong> marcado como <strong>${labels[ev.action]}</strong></div>
+          <div class="history-time">${timeStr}</div>
+        </div>`;
+    }).join('');
+  }
+
+  function deleteItem(barcode) {
+    const inv = loadInventory();
+    delete inv[barcode];
+    saveInventory(inv);
+    renderAll();
+  }
+
+  function clearHistory() {
+    if (!confirm('¿Eliminar todo el historial?')) return;
+    saveHistory([]);
+    renderHistory();
+  }
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────
+  renderAll();
+  barcodeInput.focus();
+</script>
+
+</body>
+</html>
