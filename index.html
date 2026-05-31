@@ -476,7 +476,21 @@
 <header>
   <span>🏠</span>
   <h1>Stock del Hogar</h1>
+  <button id="config-btn" onclick="toggleConfig()" style="margin-left:auto; background:none; border:1px solid var(--border); border-radius:6px; padding:6px 10px; cursor:pointer; font-size:1rem;">⚙️</button>
 </header>
+
+<!-- Config panel -->
+<div id="config-panel" style="display:none; background:var(--card); border-bottom:1px solid var(--border); padding:16px 24px;">
+  <p style="font-size:0.85rem; color:var(--muted); margin-bottom:10px;">Gemini API Key — se guarda solo en tu dispositivo, nunca en el servidor.</p>
+  <div style="display:flex; gap:8px;">
+    <input id="gemini-key-input" type="password" placeholder="AIzaSy..."
+      style="flex:1; padding:10px 14px; border:2px solid var(--border); border-radius:8px; font-size:0.95rem; outline:none; font-family:monospace;"
+      autocomplete="off"
+    />
+    <button onclick="saveGeminiKey()" style="padding:10px 16px; background:var(--text); color:white; border:none; border-radius:8px; cursor:pointer;">Guardar</button>
+  </div>
+  <p id="config-status" style="font-size:0.8rem; margin-top:8px; color:var(--comprado); display:none;"></p>
+</div>
 
 <div class="main">
 
@@ -594,6 +608,32 @@
 </div>
 
 <script>
+  // ── Config ────────────────────────────────────────────────────────────────
+  function toggleConfig() {
+    const panel = document.getElementById('config-panel');
+    const input = document.getElementById('gemini-key-input');
+    if (panel.style.display === 'none') {
+      panel.style.display = 'block';
+      const saved = localStorage.getItem('gemini_api_key');
+      if (saved) input.value = saved;
+      input.focus();
+    } else {
+      panel.style.display = 'none';
+    }
+  }
+
+  function saveGeminiKey() {
+    const key = document.getElementById('gemini-key-input').value.trim();
+    if (!key) return;
+    localStorage.setItem('gemini_api_key', key);
+    // Reload the key in memory
+    window.__geminiKey = key;
+    const st = document.getElementById('config-status');
+    st.textContent = '✓ API key guardada';
+    st.style.display = 'block';
+    setTimeout(() => { document.getElementById('config-panel').style.display = 'none'; }, 1500);
+  }
+
   // ── Debug log ─────────────────────────────────────────────────────────────
   const debugLines = [];
 
@@ -782,7 +822,7 @@
     dlog('Cámara detenida', 'info');
   }
 
-  const GEMINI_API_KEY = 'AIzaSyD7QnW4aDAFTCNAB7GHpaect0O-iOPhxo8';
+  const GEMINI_API_KEY = localStorage.getItem('gemini_api_key') || '';
 
   // ── Open Food Facts lookup ────────────────────────────────────────────────
   async function lookupBarcode() {
@@ -848,8 +888,10 @@
 
   async function tryGemini(code) {
     try {
+      const key = localStorage.getItem('gemini_api_key') || GEMINI_API_KEY;
+      if (!key) { dlog('Gemini: no hay API key configurada', 'warn'); return null; }
       dlog('Buscando con Gemini + Google Search...', 'info');
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
