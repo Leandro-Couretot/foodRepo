@@ -782,8 +782,7 @@
     dlog('Cámara detenida', 'info');
   }
 
-  const GOOGLE_API_KEY = 'AIzaSyBrp3ZMPJhfJ3LErPKeUOiLQQbGBFoknV4';
-  const GOOGLE_CSE_ID  = '62666132fb2a44521';
+  const GEMINI_API_KEY = 'AIzaSyD7QnW4aDAFTCNAB7GHpaect0O-iOPhxo8';
 
   // ── Open Food Facts lookup ────────────────────────────────────────────────
   async function lookupBarcode() {
@@ -844,84 +843,43 @@
   }
 
   async function tryGoogleSearch(code) {
-    // Intentar varios supermercados via proxy CORS
-    const sources = [
-      { name: 'Coto',  fn: () => tryCoto(code)  },
-      { name: 'Jumbo', fn: () => tryJumbo(code)  },
-    ];
-
-    for (const src of sources) {
-      dlog(`Buscando en ${src.name}...`, 'info');
-      try {
-        const result = await src.fn();
-        if (result) {
-          dlog(`Encontrado en ${src.name}: ${result.name}`, 'ok');
-          return result;
-        }
-        dlog(`${src.name}: sin resultado`, 'warn');
-      } catch(e) {
-        dlog(`${src.name} error: ${e}`, 'error');
-      }
-    }
-    return null;
+    return await tryGemini(code);
   }
 
-  async function tryCoto(code) {
-    const target = `https://www.cotodigital3.com.ar/sitios/cdigi/browse?_dyncharset=utf-8&Ntt=${code}&Dy=1&Nty=1&Ntk=All&Nrpp=1`;
-    const proxy  = `https://api.allorigins.win/get?url=${encodeURIComponent(target)}`;
-    dlog(`Coto proxy fetch...`, 'info');
-    const res  = await fetch(proxy);
-    const data = await res.json();
-    dlog(`Coto HTTP ${res.status}, contents length: ${data?.contents?.length}`, res.ok ? 'info' : 'warn');
-    if (!data?.contents) return null;
+  async function tryGemini(code) {
+    try {
+      dlog('Buscando con Gemini + Google Search...', 'info');
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: `Busca el código de barras EAN "${code}" en supermercados de Argentina (Coto, Jumbo, Carrefour, Dia, Atomo). Respondé ÚNICAMENTE con el nombre comercial del producto, sin marca ni descripción extra. Si no lo encontrás, respondé exactamente: NO_ENCONTRADO` }]
+          }],
+          tools: [{ google_search: {} }],
+          generationConfig: { maxOutputTokens: 60, temperature: 0 }
+        })
+      });
 
-    // Parsear HTML buscando el nombre del producto
-    const parser = new DOMParser();
-    const doc    = parser.parseFromString(data.contents, 'text/html');
+      const data = await res.json();
+      dlog(`Gemini HTTP ${res.status}`, res.ok ? 'info' : 'error');
 
-    // Coto usa span.descrip_full o .product_name
-    const selectors = ['.descrip_full', '.product-name', 'h1.product_name', '.product_title', 'span[itemprop="name"]'];
-    for (const sel of selectors) {
-      const el = doc.querySelector(sel);
-      if (el?.textContent?.trim()) {
-        const name = el.textContent.trim();
-        dlog(`Coto selector "${sel}": ${name}`, 'ok');
-        return { barcode: code, name, brand: '', image: '' };
+      if (!res.ok) {
+        dlog(`Gemini error: ${data?.error?.message}`, 'error');
+        return null;
       }
+
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+      dlog(`Gemini respuesta: ${text}`, 'ok');
+
+      if (!text || text === 'NO_ENCONTRADO') return null;
+
+      return { barcode: code, name: text, brand: '', image: '' };
+    } catch(e) {
+      dlog(`Gemini excepción: ${e}`, 'error');
+      return null;
     }
-
-    // Fallback: buscar en el título de la página
-    const title = doc.querySelector('title')?.textContent?.trim();
-    dlog(`Coto title: ${title}`, 'info');
-    if (title && !title.toLowerCase().includes('coto') && title.length > 5) {
-      return { barcode: code, name: title.replace(/[\|\-].*$/, '').trim(), brand: '', image: '' };
-    }
-
-    return null;
-  }
-
-  async function tryJumbo(code) {
-    const target = `https://www.jumbo.com.ar/${code}/p`;
-    const proxy  = `https://api.allorigins.win/get?url=${encodeURIComponent(target)}`;
-    dlog(`Jumbo proxy fetch...`, 'info');
-    const res  = await fetch(proxy);
-    const data = await res.json();
-    dlog(`Jumbo HTTP ${res.status}, contents length: ${data?.contents?.length}`, res.ok ? 'info' : 'warn');
-    if (!data?.contents) return null;
-
-    const parser = new DOMParser();
-    const doc    = parser.parseFromString(data.contents, 'text/html');
-
-    const selectors = ['h1.productName', '.product-name h1', 'h1[class*="product"]', 'h1'];
-    for (const sel of selectors) {
-      const el = doc.querySelector(sel);
-      if (el?.textContent?.trim()) {
-        const name = el.textContent.trim();
-        dlog(`Jumbo selector "${sel}": ${name}`, 'ok');
-        return { barcode: code, name, brand: '', image: '' };
-      }
-    }
-    return null;
   }
 
   function showNameInputPanel(code) {
