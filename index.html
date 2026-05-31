@@ -912,6 +912,7 @@
         return null;
       }
 
+      dlog(`Gemini raw: ${JSON.stringify(data).slice(0, 300)}`, 'info');
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
       dlog(`Gemini respuesta: ${text}`, 'ok');
 
