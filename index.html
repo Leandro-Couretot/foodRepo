@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Stock del Hogar</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -53,12 +54,15 @@
       box-shadow: var(--shadow);
     }
 
-    .scan-card h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 16px; }
-
-    .scan-input-row {
-      display: flex;
-      gap: 10px;
+    .scan-card h2 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 16px;
     }
+
+    .scan-input-row { display: flex; gap: 10px; }
 
     #barcode-input {
       flex: 1;
@@ -73,10 +77,8 @@
 
     #barcode-input:focus { border-color: var(--en-uso); }
 
-    #manual-btn {
-      padding: 12px 18px;
-      background: var(--text);
-      color: white;
+    #manual-btn, #camera-btn {
+      padding: 12px 16px;
       border: none;
       border-radius: 8px;
       cursor: pointer;
@@ -84,7 +86,46 @@
       white-space: nowrap;
     }
 
+    #manual-btn { background: var(--text); color: white; }
     #manual-btn:hover { opacity: 0.85; }
+
+    #camera-btn { background: var(--en-uso-bg); color: var(--en-uso); font-size: 1.3rem; padding: 12px 14px; }
+    #camera-btn:hover { opacity: 0.85; }
+    #camera-btn.active { background: var(--descartado-bg); color: var(--descartado); }
+
+    /* Camera viewer */
+    #camera-container {
+      display: none;
+      margin-top: 16px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 2px solid var(--en-uso);
+      position: relative;
+    }
+
+    #camera-container.visible { display: block; }
+
+    /* html5-qrcode injects a video element; style it */
+    #camera-reader {
+      width: 100%;
+    }
+
+    #camera-reader video {
+      width: 100% !important;
+      border-radius: 0;
+    }
+
+    /* hide the default html5-qrcode UI chrome we don't need */
+    #camera-reader img { display: none !important; }
+    #camera-reader__scan_region { background: transparent !important; }
+    #camera-reader__dashboard { display: none !important; }
+
+    .camera-hint {
+      text-align: center;
+      font-size: 0.82rem;
+      color: var(--muted);
+      margin-top: 8px;
+    }
 
     /* Product panel */
     #product-panel {
@@ -125,15 +166,11 @@
     }
 
     .product-details { flex: 1; }
-    .product-name { font-size: 1.1rem; font-weight: 600; margin-bottom: 4px; }
+    .product-name  { font-size: 1.1rem; font-weight: 600; margin-bottom: 4px; }
     .product-brand { font-size: 0.9rem; color: var(--muted); margin-bottom: 4px; }
     .product-barcode { font-size: 0.8rem; color: var(--muted); font-family: monospace; }
 
-    .action-buttons {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
+    .action-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
 
     .action-btn {
       flex: 1;
@@ -151,13 +188,12 @@
       transition: opacity 0.15s, transform 0.1s;
     }
 
-    .action-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+    .action-btn:hover  { opacity: 0.9; transform: translateY(-1px); }
     .action-btn:active { transform: translateY(0); }
+    .action-btn .icon  { font-size: 1.5rem; }
 
-    .action-btn .icon { font-size: 1.5rem; }
-
-    .btn-comprado { background: var(--comprado-bg); color: var(--comprado); }
-    .btn-en-uso   { background: var(--en-uso-bg);   color: var(--en-uso); }
+    .btn-comprado   { background: var(--comprado-bg);   color: var(--comprado); }
+    .btn-en-uso     { background: var(--en-uso-bg);     color: var(--en-uso); }
     .btn-descartado { background: var(--descartado-bg); color: var(--descartado); }
 
     .status-msg {
@@ -191,11 +227,11 @@
     .stat-count { font-size: 2rem; font-weight: 700; }
     .stat-label { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
 
-    .stat-card.comprado .stat-count { color: var(--comprado); }
-    .stat-card.en-uso   .stat-count { color: var(--en-uso); }
+    .stat-card.comprado   .stat-count { color: var(--comprado); }
+    .stat-card.en-uso     .stat-count { color: var(--en-uso); }
     .stat-card.descartado .stat-count { color: var(--descartado); }
 
-    /* Inventory table */
+    /* Inventory */
     .inventory-card {
       background: var(--card);
       border: 1px solid var(--border);
@@ -211,11 +247,13 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
     }
 
     .inventory-header h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
 
-    .filter-tabs { display: flex; gap: 6px; }
+    .filter-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
 
     .filter-tab {
       padding: 5px 12px;
@@ -244,8 +282,7 @@
     .inv-item:hover { background: #fafaf8; }
 
     .inv-item-img {
-      width: 40px;
-      height: 40px;
+      width: 40px; height: 40px;
       object-fit: contain;
       border-radius: 6px;
       border: 1px solid var(--border);
@@ -254,8 +291,7 @@
     }
 
     .inv-item-img-placeholder {
-      width: 40px;
-      height: 40px;
+      width: 40px; height: 40px;
       border-radius: 6px;
       background: #f0f0ec;
       display: flex;
@@ -297,12 +333,7 @@
 
     .inv-item-del:hover { color: var(--descartado); background: var(--descartado-bg); }
 
-    .empty-state {
-      text-align: center;
-      padding: 48px 20px;
-      color: var(--muted);
-    }
-
+    .empty-state { text-align: center; padding: 48px 20px; color: var(--muted); }
     .empty-state .icon { font-size: 3rem; margin-bottom: 12px; }
     .empty-state p { font-size: 0.95rem; }
 
@@ -350,13 +381,7 @@
 
     .history-item:last-child { border-bottom: none; }
 
-    .history-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-
+    .history-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
     .dot-comprado   { background: var(--comprado); }
     .dot-en-uso     { background: var(--en-uso); }
     .dot-descartado { background: var(--descartado); }
@@ -388,27 +413,33 @@
         id="barcode-input"
         type="text"
         inputmode="numeric"
-        placeholder="Escanear o escribir código de barras..."
+        placeholder="Código de barras..."
         autocomplete="off"
-        autofocus
       />
+      <button id="camera-btn" onclick="toggleCamera()" title="Usar cámara">📷</button>
       <button id="manual-btn">Buscar</button>
+    </div>
+
+    <!-- Camera viewer -->
+    <div id="camera-container">
+      <div id="camera-reader"></div>
+      <p class="camera-hint">Apuntá la cámara al código de barras</p>
     </div>
 
     <div id="product-panel">
       <div class="product-info">
         <div id="product-img-wrap"></div>
         <div class="product-details">
-          <div class="product-name" id="product-name">—</div>
-          <div class="product-brand" id="product-brand"></div>
+          <div class="product-name"   id="product-name">—</div>
+          <div class="product-brand"  id="product-brand"></div>
           <div class="product-barcode" id="product-barcode"></div>
         </div>
       </div>
       <div class="action-buttons">
-        <button class="action-btn btn-comprado" onclick="registerAction('comprado')">
+        <button class="action-btn btn-comprado"   onclick="registerAction('comprado')">
           <span class="icon">🛒</span>Comprado
         </button>
-        <button class="action-btn btn-en-uso" onclick="registerAction('en-uso')">
+        <button class="action-btn btn-en-uso"     onclick="registerAction('en-uso')">
           <span class="icon">📦</span>En uso
         </button>
         <button class="action-btn btn-descartado" onclick="registerAction('descartado')">
@@ -440,10 +471,10 @@
     <div class="inventory-header">
       <h2>Inventario actual</h2>
       <div class="filter-tabs">
-        <button class="filter-tab active" data-filter="all" onclick="setFilter('all')">Todos</button>
-        <button class="filter-tab" data-filter="comprado" onclick="setFilter('comprado')">Comprado</button>
-        <button class="filter-tab" data-filter="en-uso" onclick="setFilter('en-uso')">En uso</button>
-        <button class="filter-tab" data-filter="descartado" onclick="setFilter('descartado')">Descartado</button>
+        <button class="filter-tab active" data-filter="all"        onclick="setFilter('all')">Todos</button>
+        <button class="filter-tab"        data-filter="comprado"   onclick="setFilter('comprado')">Comprado</button>
+        <button class="filter-tab"        data-filter="en-uso"     onclick="setFilter('en-uso')">En uso</button>
+        <button class="filter-tab"        data-filter="descartado" onclick="setFilter('descartado')">Descartado</button>
       </div>
     </div>
     <div class="inventory-list" id="inventory-list"></div>
@@ -461,46 +492,91 @@
 </div>
 
 <script>
-  // ── Storage ──────────────────────────────────────────────────────────────
+  // ── Storage ───────────────────────────────────────────────────────────────
   const LS_INVENTORY = 'hogar_inventory';
   const LS_HISTORY   = 'hogar_history';
 
   function loadInventory() {
     try { return JSON.parse(localStorage.getItem(LS_INVENTORY)) || {}; } catch { return {}; }
   }
-
-  function saveInventory(inv) {
-    localStorage.setItem(LS_INVENTORY, JSON.stringify(inv));
-  }
+  function saveInventory(inv) { localStorage.setItem(LS_INVENTORY, JSON.stringify(inv)); }
 
   function loadHistory() {
     try { return JSON.parse(localStorage.getItem(LS_HISTORY)) || []; } catch { return []; }
   }
-
-  function saveHistory(h) {
-    localStorage.setItem(LS_HISTORY, JSON.stringify(h));
-  }
+  function saveHistory(h) { localStorage.setItem(LS_HISTORY, JSON.stringify(h)); }
 
   // ── State ─────────────────────────────────────────────────────────────────
   let currentProduct = null;
-  let activeFilter = 'all';
+  let activeFilter   = 'all';
+  let scanner        = null;
+  let cameraOpen     = false;
+  let scanCooldown   = false;
 
-  // ── Barcode input ─────────────────────────────────────────────────────────
+  // ── Barcode text input ────────────────────────────────────────────────────
   const barcodeInput = document.getElementById('barcode-input');
   const manualBtn    = document.getElementById('manual-btn');
 
-  barcodeInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter') lookupBarcode();
-  });
-
+  barcodeInput.addEventListener('keydown', e => { if (e.key === 'Enter') lookupBarcode(); });
   manualBtn.addEventListener('click', lookupBarcode);
 
-  // Keep focus on input so scanner always types into it
-  document.addEventListener('click', e => {
-    if (!e.target.closest('button') || e.target === manualBtn) {
-      barcodeInput.focus();
+  // ── Camera (html5-qrcode) ─────────────────────────────────────────────────
+  async function toggleCamera() {
+    if (cameraOpen) {
+      await stopCamera();
+    } else {
+      await startCamera();
     }
-  });
+  }
+
+  async function startCamera() {
+    const container = document.getElementById('camera-container');
+    const btn       = document.getElementById('camera-btn');
+
+    scanner = new Html5Qrcode('camera-reader');
+
+    try {
+      await scanner.start(
+        { facingMode: 'environment' },          // rear camera on iPhone
+        { fps: 10, qrbox: { width: 280, height: 120 } },
+        onScanSuccess,
+        () => {}                                // ignore per-frame errors
+      );
+
+      container.classList.add('visible');
+      btn.classList.add('active');
+      btn.textContent = '⏹';
+      cameraOpen = true;
+    } catch (err) {
+      scanner = null;
+      showStatus('No se pudo acceder a la cámara. Revisá los permisos.', 'error');
+    }
+  }
+
+  async function stopCamera() {
+    const container = document.getElementById('camera-container');
+    const btn       = document.getElementById('camera-btn');
+
+    if (scanner) {
+      try { await scanner.stop(); } catch {}
+      scanner = null;
+    }
+
+    container.classList.remove('visible');
+    btn.classList.remove('active');
+    btn.textContent = '📷';
+    cameraOpen = false;
+  }
+
+  function onScanSuccess(code) {
+    if (scanCooldown) return;
+    scanCooldown = true;
+    setTimeout(() => { scanCooldown = false; }, 3000);
+
+    stopCamera();
+    barcodeInput.value = code;
+    lookupBarcode();
+  }
 
   // ── Open Food Facts lookup ────────────────────────────────────────────────
   async function lookupBarcode() {
@@ -516,27 +592,16 @@
       if (data.status === 1) {
         const p = data.product;
         currentProduct = {
-          barcode:  code,
-          name:     p.product_name || p.product_name_es || 'Producto sin nombre',
-          brand:    p.brands || '',
-          image:    p.image_small_url || p.image_url || '',
+          barcode: code,
+          name:    p.product_name || p.product_name_es || 'Producto sin nombre',
+          brand:   p.brands || '',
+          image:   p.image_small_url || p.image_url || '',
         };
       } else {
-        // Product not found in OFF — still allow manual registration
-        currentProduct = {
-          barcode: code,
-          name:    'Producto desconocido',
-          brand:   '',
-          image:   '',
-        };
+        currentProduct = { barcode: code, name: 'Producto desconocido', brand: '', image: '' };
       }
     } catch {
-      currentProduct = {
-        barcode: code,
-        name:    'Producto desconocido',
-        brand:   '',
-        image:   '',
-      };
+      currentProduct = { barcode: code, name: 'Producto desconocido', brand: '', image: '' };
     }
 
     renderProductPanel();
@@ -551,11 +616,9 @@
     document.getElementById('product-barcode').textContent = currentProduct.barcode;
 
     const wrap = document.getElementById('product-img-wrap');
-    if (currentProduct.image) {
-      wrap.innerHTML = `<img class="product-img" src="${currentProduct.image}" alt="" />`;
-    } else {
-      wrap.innerHTML = `<div class="product-img-placeholder">📦</div>`;
-    }
+    wrap.innerHTML = currentProduct.image
+      ? `<img class="product-img" src="${currentProduct.image}" alt="" />`
+      : `<div class="product-img-placeholder">📦</div>`;
 
     document.getElementById('product-panel').style.display = 'block';
   }
@@ -567,23 +630,12 @@
     const inv = loadInventory();
     const now = new Date().toISOString();
 
-    inv[currentProduct.barcode] = {
-      ...currentProduct,
-      estado:    action,
-      updatedAt: now,
-    };
-
+    inv[currentProduct.barcode] = { ...currentProduct, estado: action, updatedAt: now };
     saveInventory(inv);
 
-    // Append to history
     const hist = loadHistory();
-    hist.unshift({
-      barcode:  currentProduct.barcode,
-      name:     currentProduct.name,
-      action,
-      ts:       now,
-    });
-    saveHistory(hist.slice(0, 200)); // keep last 200
+    hist.unshift({ barcode: currentProduct.barcode, name: currentProduct.name, action, ts: now });
+    saveHistory(hist.slice(0, 200));
 
     const labels = { 'comprado': 'Comprado', 'en-uso': 'En uso', 'descartado': 'Descartado' };
     showStatus(`✓ ${currentProduct.name} → ${labels[action]}`, 'success');
@@ -598,7 +650,7 @@
     renderAll();
   }
 
-  // ── Status message ────────────────────────────────────────────────────────
+  // ── Status ────────────────────────────────────────────────────────────────
   function showStatus(msg, type) {
     const el = document.getElementById('status-msg');
     el.textContent = msg;
@@ -606,9 +658,7 @@
     el.style.display = 'block';
   }
 
-  function hideStatus() {
-    document.getElementById('status-msg').style.display = 'none';
-  }
+  function hideStatus() { document.getElementById('status-msg').style.display = 'none'; }
 
   // ── Render ────────────────────────────────────────────────────────────────
   function setFilter(f) {
@@ -619,37 +669,25 @@
     renderInventory();
   }
 
-  function renderAll() {
-    renderStats();
-    renderInventory();
-    renderHistory();
-  }
+  function renderAll() { renderStats(); renderInventory(); renderHistory(); }
 
   function renderStats() {
-    const inv = loadInventory();
-    const items = Object.values(inv);
+    const items = Object.values(loadInventory());
     document.getElementById('count-comprado').textContent   = items.filter(i => i.estado === 'comprado').length;
     document.getElementById('count-en-uso').textContent     = items.filter(i => i.estado === 'en-uso').length;
     document.getElementById('count-descartado').textContent = items.filter(i => i.estado === 'descartado').length;
   }
 
   function renderInventory() {
-    const inv  = loadInventory();
-    const list = document.getElementById('inventory-list');
-    let items  = Object.values(inv);
+    const list  = document.getElementById('inventory-list');
+    let items   = Object.values(loadInventory());
+    const labels = { 'comprado': 'Comprado', 'en-uso': 'En uso', 'descartado': 'Descartado' };
 
-    if (activeFilter !== 'all') {
-      items = items.filter(i => i.estado === activeFilter);
-    }
-
+    if (activeFilter !== 'all') items = items.filter(i => i.estado === activeFilter);
     items.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
 
     if (!items.length) {
-      list.innerHTML = `
-        <div class="empty-state">
-          <div class="icon">📋</div>
-          <p>No hay productos registrados aún.</p>
-        </div>`;
+      list.innerHTML = `<div class="empty-state"><div class="icon">📋</div><p>No hay productos registrados aún.</p></div>`;
       return;
     }
 
@@ -657,10 +695,7 @@
       const imgHtml = item.image
         ? `<img class="inv-item-img" src="${item.image}" alt="" />`
         : `<div class="inv-item-img-placeholder">📦</div>`;
-
-      const labels = { 'comprado': 'Comprado', 'en-uso': 'En uso', 'descartado': 'Descartado' };
-      const date   = new Date(item.updatedAt).toLocaleDateString('es-AR', { day:'2-digit', month:'short' });
-
+      const date = new Date(item.updatedAt).toLocaleDateString('es-AR', { day:'2-digit', month:'short' });
       return `
         <div class="inv-item">
           ${imgHtml}
@@ -676,15 +711,14 @@
   }
 
   function renderHistory() {
-    const hist = loadHistory();
-    const list = document.getElementById('history-list');
+    const hist   = loadHistory();
+    const list   = document.getElementById('history-list');
+    const labels = { 'comprado': 'Comprado', 'en-uso': 'En uso', 'descartado': 'Descartado' };
 
     if (!hist.length) {
       list.innerHTML = `<div class="empty-state"><div class="icon">🕓</div><p>Sin eventos aún.</p></div>`;
       return;
     }
-
-    const labels = { 'comprado': 'Comprado', 'en-uso': 'En uso', 'descartado': 'Descartado' };
 
     list.innerHTML = hist.map(ev => {
       const d = new Date(ev.ts);
@@ -714,15 +748,12 @@
 
   function escHtml(str) {
     return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   // ── Init ──────────────────────────────────────────────────────────────────
   renderAll();
-  barcodeInput.focus();
 </script>
 
 </body>
