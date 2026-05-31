@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Stock del Hogar</title>
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -101,30 +100,53 @@
       overflow: hidden;
       border: 2px solid var(--en-uso);
       position: relative;
+      background: #000;
     }
 
     #camera-container.visible { display: block; }
 
-    /* html5-qrcode injects a video element; style it */
-    #camera-reader {
+    #camera-video {
       width: 100%;
+      display: block;
+      max-height: 60vh;
+      object-fit: cover;
     }
 
-    #camera-reader video {
-      width: 100% !important;
-      border-radius: 0;
+    /* scanning overlay box */
+    .scan-overlay {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 75%;
+      height: 100px;
+      border: 2px solid rgba(255,255,255,0.8);
+      border-radius: 6px;
+      pointer-events: none;
     }
 
-    /* hide the default html5-qrcode UI chrome we don't need */
-    #camera-reader img { display: none !important; }
-    #camera-reader__scan_region { background: transparent !important; }
-    #camera-reader__dashboard { display: none !important; }
+    .scan-overlay::before,
+    .scan-overlay::after {
+      content: '';
+      position: absolute;
+      left: 0; right: 0;
+      top: 50%;
+      height: 2px;
+      background: rgba(30, 180, 100, 0.7);
+      animation: scanline 1.8s ease-in-out infinite;
+    }
+
+    @keyframes scanline {
+      0%   { top: 10%; opacity: 1; }
+      100% { top: 90%; opacity: 0.4; }
+    }
 
     .camera-hint {
       text-align: center;
       font-size: 0.82rem;
       color: var(--muted);
       margin-top: 8px;
+      padding-bottom: 4px;
     }
 
     /* Product panel */
@@ -468,9 +490,10 @@
 
     <!-- Camera viewer -->
     <div id="camera-container">
-      <div id="camera-reader"></div>
-      <p class="camera-hint">Apuntá la cámara al código de barras</p>
+      <video id="camera-video" autoplay playsinline muted></video>
+      <div class="scan-overlay"></div>
     </div>
+    <p class="camera-hint" id="camera-hint" style="display:none">Apuntá la cámara al código de barras</p>
 
     <!-- Status siempre visible, fuera del product-panel -->
     <div id="status-msg" class="status-msg"></div>
@@ -591,7 +614,6 @@
   // ── State ─────────────────────────────────────────────────────────────────
   let currentProduct = null;
   let activeFilter   = 'all';
-  let scanner        = null;
   let cameraOpen     = false;
   let scanCooldown   = false;
 
@@ -602,77 +624,123 @@
   barcodeInput.addEventListener('keydown', e => { if (e.key === 'Enter') lookupBarcode(); });
   manualBtn.addEventListener('click', lookupBarcode);
 
-  // ── Camera (html5-qrcode) ─────────────────────────────────────────────────
+  // ── Camera (native BarcodeDetector API) ──────────────────────────────────
+  let cameraStream   = null;
+  let scanLoopActive = false;
+  let detector       = null;
+  let canvas         = null;
+  let ctx            = null;
+
   async function toggleCamera() {
-    if (cameraOpen) {
-      await stopCamera();
-    } else {
-      await startCamera();
-    }
+    if (cameraOpen) { stopCamera(); } else { await startCamera(); }
   }
 
   async function startCamera() {
     const container = document.getElementById('camera-container');
+    const hint      = document.getElementById('camera-hint');
     const btn       = document.getElementById('camera-btn');
+    const video     = document.getElementById('camera-video');
 
-    dlog('Iniciando cámara...', 'info');
+    dlog('Verificando BarcodeDetector...', 'info');
 
-    const formats = [
-      Html5QrcodeSupportedFormats.EAN_13,
-      Html5QrcodeSupportedFormats.EAN_8,
-      Html5QrcodeSupportedFormats.UPC_A,
-      Html5QrcodeSupportedFormats.UPC_E,
-      Html5QrcodeSupportedFormats.CODE_128,
-      Html5QrcodeSupportedFormats.CODE_39,
-    ];
+    if (!('BarcodeDetector' in window)) {
+      dlog('BarcodeDetector NO disponible en este browser', 'error');
+      showStatus('Tu browser no soporta escaneo de cámara. Ingresá el código manualmente.', 'error');
+      return;
+    }
 
-    dlog(`Formatos: ${formats.join(', ')}`, 'info');
-    scanner = new Html5Qrcode('camera-reader', { formatsToSupport: formats, verbose: false });
+    const supported = await BarcodeDetector.getSupportedFormats();
+    dlog(`Formatos soportados: ${supported.join(', ')}`, 'info');
+
+    const wantedFormats = ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','itf'].filter(f => supported.includes(f));
+    dlog(`Usando formatos: ${wantedFormats.join(', ')}`, wantedFormats.length ? 'ok' : 'warn');
+
+    if (!wantedFormats.length) {
+      dlog('Ningún formato de código de barras soportado', 'error');
+      showStatus('Tu browser no soporta detección de códigos de barras lineales.', 'error');
+      return;
+    }
+
+    detector = new BarcodeDetector({ formats: wantedFormats });
 
     try {
-      await scanner.start(
-        { facingMode: 'environment' },
-        { fps: 15, qrbox: { width: 300, height: 150 } },
-        onScanSuccess,
-        (err) => { /* per-frame error — solo logueamos si es distinto al anterior */ }
-      );
-
-      dlog('Cámara iniciada OK', 'ok');
-      container.classList.add('visible');
-      btn.classList.add('active');
-      btn.textContent = '⏹';
-      cameraOpen = true;
+      dlog('Pidiendo acceso a cámara...', 'info');
+      cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
+      });
+      dlog('Cámara OK', 'ok');
     } catch (err) {
-      dlog(`Error al iniciar cámara: ${err}`, 'error');
-      scanner = null;
-      showStatus('No se pudo acceder a la cámara. Revisá los permisos.', 'error');
+      dlog(`Error getUserMedia: ${err}`, 'error');
+      showStatus('No se pudo acceder a la cámara. Revisá los permisos en Ajustes > Safari.', 'error');
+      return;
     }
+
+    video.srcObject = cameraStream;
+    await video.play().catch(e => dlog(`Error play(): ${e}`, 'error'));
+
+    canvas = document.createElement('canvas');
+    ctx    = canvas.getContext('2d');
+
+    container.classList.add('visible');
+    hint.style.display = 'block';
+    btn.classList.add('active');
+    btn.textContent = '⏹';
+    cameraOpen     = true;
+    scanLoopActive = true;
+
+    scanLoop(video);
   }
 
-  async function stopCamera() {
-    const container = document.getElementById('camera-container');
-    const btn       = document.getElementById('camera-btn');
+  async function scanLoop(video) {
+    if (!scanLoopActive) return;
 
-    if (scanner) {
-      try { await scanner.stop(); } catch {}
-      scanner = null;
+    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+      canvas.width  = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+
+      try {
+        const barcodes = await detector.detect(canvas);
+        if (barcodes.length > 0) {
+          const code = barcodes[0].rawValue;
+          dlog(`Código detectado: ${code} (formato: ${barcodes[0].format})`, 'ok');
+          if (!scanCooldown) {
+            scanCooldown = true;
+            setTimeout(() => { scanCooldown = false; }, 3000);
+            stopCamera();
+            barcodeInput.value = code;
+            lookupBarcode();
+            return;
+          }
+        }
+      } catch (e) {
+        dlog(`Error detect(): ${e}`, 'error');
+      }
     }
 
+    requestAnimationFrame(() => scanLoop(video));
+  }
+
+  function stopCamera() {
+    const container = document.getElementById('camera-container');
+    const hint      = document.getElementById('camera-hint');
+    const btn       = document.getElementById('camera-btn');
+    const video     = document.getElementById('camera-video');
+
+    scanLoopActive = false;
+
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(t => t.stop());
+      cameraStream = null;
+    }
+
+    video.srcObject = null;
     container.classList.remove('visible');
+    hint.style.display = 'none';
     btn.classList.remove('active');
     btn.textContent = '📷';
     cameraOpen = false;
-  }
-
-  function onScanSuccess(code) {
-    dlog(`Código detectado: ${code}`, 'ok');
-    if (scanCooldown) { dlog('Cooldown activo, ignorando', 'warn'); return; }
-    scanCooldown = true;
-    setTimeout(() => { scanCooldown = false; }, 3000);
-
-    stopCamera();
-    barcodeInput.value = code;
-    lookupBarcode();
+    dlog('Cámara detenida', 'info');
   }
 
   // ── Open Food Facts lookup ────────────────────────────────────────────────
