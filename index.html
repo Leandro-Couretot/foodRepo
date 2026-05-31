@@ -897,7 +897,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{
-            parts: [{ text: `Busca el código de barras EAN "${code}" en supermercados de Argentina (Coto, Jumbo, Carrefour, Dia, Atomo). Respondé ÚNICAMENTE con el nombre comercial del producto, sin marca ni descripción extra. Si no lo encontrás, respondé exactamente: NO_ENCONTRADO` }]
+            parts: [{ text: `Buscá el código de barras EAN "${code}" en internet (supermercados argentinos, Open Food Facts, cualquier tienda online o base de datos de productos). Dame el nombre completo del producto incluyendo marca y variedad (por ejemplo: "Leche La Serenísima Entera 1L"). Si definitivamente no encontrás nada, respondé exactamente: NO_ENCONTRADO` }]
           }],
           tools: [{ google_search: {} }],
           generationConfig: { maxOutputTokens: 500, temperature: 0 }
