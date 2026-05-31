@@ -697,9 +697,34 @@
     });
 
     Quagga.onDetected(result => {
-      const code = result?.codeResult?.code;
+      const code   = result?.codeResult?.code;
+      const format = result?.codeResult?.format;
       if (!code) return;
-      dlog(`Código detectado: ${code} (${result.codeResult.format})`, 'ok');
+
+      // Calcular confianza media (error bajo = buena lectura en Quagga)
+      const errors = result.codeResult.decodedCodes
+        .map(c => c.error)
+        .filter(e => e != null && !isNaN(e));
+      const avgError = errors.length ? errors.reduce((a,b) => a+b, 0) / errors.length : 1;
+
+      dlog(`Detectado: ${code} (${format}) — error medio: ${avgError.toFixed(3)}`, avgError < 0.25 ? 'ok' : 'warn');
+
+      // Rechazar lecturas con poca confianza
+      if (avgError > 0.20) {
+        dlog(`Descartado por baja confianza (${avgError.toFixed(3)} > 0.20)`, 'warn');
+        return;
+      }
+
+      // Validar checksum EAN-13
+      if (format === 'ean_reader' && code.length === 13) {
+        if (!validateEAN13(code)) {
+          dlog(`Checksum EAN-13 inválido: ${code}`, 'warn');
+          return;
+        }
+      }
+
+      dlog(`Código aceptado: ${code}`, 'ok');
+
       if (scanCooldown) return;
       scanCooldown = true;
       setTimeout(() => { scanCooldown = false; }, 3000);
@@ -708,9 +733,11 @@
       lookupBarcode();
     });
 
+    // Solo logueamos frames donde algo se detectó para no saturar el log
     Quagga.onProcessed(result => {
-      if (result?.codeResult) {
-        dlog(`Frame procesado — confianza: ${result.codeResult.decodedCodes?.map(c=>c.error?.toFixed(2)).join(',')}`, 'info');
+      if (result?.codeResult?.code) {
+        const errors = result.codeResult.decodedCodes.map(c => c.error?.toFixed(2)).join(',');
+        dlog(`Frame con código ${result.codeResult.code} — errores: ${errors}`, 'info');
       }
     });
   }
@@ -911,6 +938,14 @@
     if (!confirm('¿Eliminar todo el historial?')) return;
     saveHistory([]);
     renderHistory();
+  }
+
+  function validateEAN13(code) {
+    if (code.length !== 13) return false;
+    const digits = code.split('').map(Number);
+    const check = digits.pop();
+    const sum = digits.reduce((acc, d, i) => acc + d * (i % 2 === 0 ? 1 : 3), 0);
+    return (10 - (sum % 10)) % 10 === check;
   }
 
   function escHtml(str) {
