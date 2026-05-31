@@ -822,7 +822,7 @@
     dlog('Cámara detenida', 'info');
   }
 
-  const GEMINI_API_KEY = localStorage.getItem('gemini_api_key') || '';
+  const GEMINI_API_KEY = localStorage.getItem('gemini_api_key') || '__GEMINI_API_KEY__';
 
   // ── Open Food Facts lookup ────────────────────────────────────────────────
   async function lookupBarcode() {
