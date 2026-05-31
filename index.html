@@ -505,6 +505,21 @@
     <!-- Status siempre visible, fuera del product-panel -->
     <div id="status-msg" class="status-msg"></div>
 
+    <!-- Nombre manual cuando no se encuentra en OFF -->
+    <div id="name-input-panel" style="display:none; margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
+      <p style="font-size:0.9rem; color:var(--muted); margin-bottom:10px;">Producto no encontrado. Ingresá el nombre manualmente:</p>
+      <div style="display:flex; gap:8px;">
+        <input id="manual-name-input" type="text" placeholder="Ej: Aceite Cocinero 900ml"
+          style="flex:1; padding:10px 14px; border:2px solid var(--border); border-radius:8px; font-size:1rem; outline:none;"
+          autocomplete="off"
+        />
+        <button onclick="confirmManualName()"
+          style="padding:10px 16px; background:var(--text); color:white; border:none; border-radius:8px; cursor:pointer; font-size:0.9rem;">
+          OK
+        </button>
+      </div>
+    </div>
+
     <div id="product-panel">
       <div class="product-info">
         <div id="product-img-wrap"></div>
@@ -797,17 +812,39 @@
         };
         dlog(`Producto: ${currentProduct.name}`, 'ok');
         hideStatus();
+        renderProductPanel();
       } else {
         dlog(`Código no encontrado en OFF`, 'warn');
-        currentProduct = { barcode: code, name: 'Producto desconocido', brand: '', image: '' };
-        showStatus(`⚠️ Código ${code} no encontrado en la base de datos. Podés registrarlo igual.`, 'error');
+        showNameInputPanel(code);
       }
     } catch (err) {
       dlog(`Error en fetch: ${err}`, 'error');
-      currentProduct = { barcode: code, name: 'Producto desconocido', brand: '', image: '' };
-      showStatus(`⚠️ Sin conexión. Código: ${code}. Podés registrarlo igual.`, 'error');
+      showNameInputPanel(code);
     }
+  }
 
+  function showNameInputPanel(code) {
+    const pendingCode = code;
+    hideStatus();
+    showStatus(`⚠️ Código ${code} no encontrado. Ingresá el nombre del producto.`, 'error');
+    const panel = document.getElementById('name-input-panel');
+    const input = document.getElementById('manual-name-input');
+    input.value = '';
+    panel.style.display = 'block';
+    // Guardar el código pendiente en el input como data attribute
+    panel.dataset.pendingCode = code;
+    setTimeout(() => input.focus(), 100);
+  }
+
+  function confirmManualName() {
+    const panel = document.getElementById('name-input-panel');
+    const input = document.getElementById('manual-name-input');
+    const name  = input.value.trim();
+    const code  = panel.dataset.pendingCode;
+    if (!name) { input.focus(); return; }
+    panel.style.display = 'none';
+    hideStatus();
+    currentProduct = { barcode: code, name, brand: '', image: '' };
     renderProductPanel();
   }
 
@@ -846,6 +883,7 @@
     barcodeInput.value = '';
     currentProduct = null;
     document.getElementById('product-panel').style.display = 'none';
+    document.getElementById('name-input-panel').style.display = 'none';
     setTimeout(hideStatus, 2500);
 
     renderAll();
