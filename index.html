@@ -204,7 +204,8 @@
       display: none;
     }
 
-    .status-msg.success { background: var(--comprado-bg); color: var(--comprado); }
+    .status-msg.info    { background: var(--en-uso-bg);     color: var(--en-uso); }
+    .status-msg.success { background: var(--comprado-bg);   color: var(--comprado); }
     .status-msg.error   { background: var(--descartado-bg); color: var(--descartado); }
 
     /* Stats */
@@ -426,6 +427,9 @@
       <p class="camera-hint">Apuntá la cámara al código de barras</p>
     </div>
 
+    <!-- Status siempre visible, fuera del product-panel -->
+    <div id="status-msg" class="status-msg"></div>
+
     <div id="product-panel">
       <div class="product-info">
         <div id="product-img-wrap"></div>
@@ -446,7 +450,6 @@
           <span class="icon">🗑️</span>Descartado
         </button>
       </div>
-      <div id="status-msg" class="status-msg"></div>
     </div>
   </div>
 
@@ -583,7 +586,11 @@
     const code = barcodeInput.value.trim();
     if (!code) return;
 
-    showStatus('Buscando...', '');
+    // Ocultar panel anterior si había uno
+    document.getElementById('product-panel').style.display = 'none';
+    currentProduct = null;
+
+    showStatus(`🔍 Buscando código ${code}…`, 'info');
 
     try {
       const res  = await fetch(`https://world.openfoodfacts.org/api/v0/product/${code}.json`);
@@ -597,15 +604,17 @@
           brand:   p.brands || '',
           image:   p.image_small_url || p.image_url || '',
         };
+        hideStatus();
       } else {
         currentProduct = { barcode: code, name: 'Producto desconocido', brand: '', image: '' };
+        showStatus(`⚠️ Código ${code} no encontrado en la base de datos. Podés registrarlo igual.`, 'error');
       }
-    } catch {
+    } catch (err) {
       currentProduct = { barcode: code, name: 'Producto desconocido', brand: '', image: '' };
+      showStatus(`⚠️ Sin conexión. Código: ${code}. Podés registrarlo igual.`, 'error');
     }
 
     renderProductPanel();
-    hideStatus();
   }
 
   function renderProductPanel() {
@@ -638,14 +647,12 @@
     saveHistory(hist.slice(0, 200));
 
     const labels = { 'comprado': 'Comprado', 'en-uso': 'En uso', 'descartado': 'Descartado' };
-    showStatus(`✓ ${currentProduct.name} → ${labels[action]}`, 'success');
+    showStatus(`✓ ${currentProduct.name} registrado como ${labels[action]}`, 'success');
 
     barcodeInput.value = '';
     currentProduct = null;
-    setTimeout(() => {
-      document.getElementById('product-panel').style.display = 'none';
-      hideStatus();
-    }, 1800);
+    document.getElementById('product-panel').style.display = 'none';
+    setTimeout(hideStatus, 2500);
 
     renderAll();
   }
