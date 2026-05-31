@@ -390,6 +390,51 @@
     .history-text { flex: 1; }
     .history-time { color: var(--muted); white-space: nowrap; }
 
+    /* Debug panel */
+    .debug-card {
+      background: #1a1a1a;
+      border-radius: 12px;
+      overflow: hidden;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow);
+    }
+
+    .debug-header {
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #333;
+    }
+
+    .debug-header h2 { font-size: 0.8rem; color: #aaa; text-transform: uppercase; letter-spacing: 0.06em; }
+
+    #debug-copy-btn {
+      background: #333;
+      border: none;
+      color: #ccc;
+      padding: 4px 10px;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 0.78rem;
+    }
+
+    #debug-copy-btn:hover { background: #444; }
+
+    #debug-log {
+      padding: 12px 16px;
+      max-height: 220px;
+      overflow-y: auto;
+      font-family: monospace;
+      font-size: 0.75rem;
+      line-height: 1.6;
+    }
+
+    .dlog-info  { color: #7ec8e3; }
+    .dlog-ok    { color: #7ecf93; }
+    .dlog-warn  { color: #f0c060; }
+    .dlog-error { color: #f07070; }
+
     @media (max-width: 500px) {
       .action-buttons { flex-direction: column; }
       .stats-row { grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -453,6 +498,15 @@
     </div>
   </div>
 
+  <!-- Debug panel -->
+  <div class="debug-card">
+    <div class="debug-header">
+      <h2>🐛 Debug log</h2>
+      <button id="debug-copy-btn" onclick="copyDebugLog()">Copiar</button>
+    </div>
+    <div id="debug-log"></div>
+  </div>
+
   <!-- Stats -->
   <div class="stats-row">
     <div class="stat-card comprado">
@@ -495,6 +549,31 @@
 </div>
 
 <script>
+  // ── Debug log ─────────────────────────────────────────────────────────────
+  const debugLines = [];
+
+  function dlog(msg, type = 'info') {
+    const ts = new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const line = `[${ts}] ${msg}`;
+    debugLines.push(line);
+    const el = document.getElementById('debug-log');
+    const div = document.createElement('div');
+    div.className = `dlog-${type}`;
+    div.textContent = line;
+    el.appendChild(div);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function copyDebugLog() {
+    navigator.clipboard.writeText(debugLines.join('\n'))
+      .then(() => { document.getElementById('debug-copy-btn').textContent = '✓ Copiado'; setTimeout(() => { document.getElementById('debug-copy-btn').textContent = 'Copiar'; }, 2000); })
+      .catch(() => { prompt('Copiá esto:', debugLines.join('\n')); });
+  }
+
+  // Capturar errores globales
+  window.addEventListener('error', e => dlog(`ERROR GLOBAL: ${e.message} (${e.filename}:${e.lineno})`, 'error'));
+  window.addEventListener('unhandledrejection', e => dlog(`PROMISE RECHAZADA: ${e.reason}`, 'error'));
+
   // ── Storage ───────────────────────────────────────────────────────────────
   const LS_INVENTORY = 'hogar_inventory';
   const LS_HISTORY   = 'hogar_history';
@@ -536,6 +615,8 @@
     const container = document.getElementById('camera-container');
     const btn       = document.getElementById('camera-btn');
 
+    dlog('Iniciando cámara...', 'info');
+
     const formats = [
       Html5QrcodeSupportedFormats.EAN_13,
       Html5QrcodeSupportedFormats.EAN_8,
@@ -545,6 +626,7 @@
       Html5QrcodeSupportedFormats.CODE_39,
     ];
 
+    dlog(`Formatos: ${formats.join(', ')}`, 'info');
     scanner = new Html5Qrcode('camera-reader', { formatsToSupport: formats, verbose: false });
 
     try {
@@ -552,14 +634,16 @@
         { facingMode: 'environment' },
         { fps: 15, qrbox: { width: 300, height: 150 } },
         onScanSuccess,
-        () => {}
+        (err) => { /* per-frame error — solo logueamos si es distinto al anterior */ }
       );
 
+      dlog('Cámara iniciada OK', 'ok');
       container.classList.add('visible');
       btn.classList.add('active');
       btn.textContent = '⏹';
       cameraOpen = true;
     } catch (err) {
+      dlog(`Error al iniciar cámara: ${err}`, 'error');
       scanner = null;
       showStatus('No se pudo acceder a la cámara. Revisá los permisos.', 'error');
     }
@@ -581,7 +665,8 @@
   }
 
   function onScanSuccess(code) {
-    if (scanCooldown) return;
+    dlog(`Código detectado: ${code}`, 'ok');
+    if (scanCooldown) { dlog('Cooldown activo, ignorando', 'warn'); return; }
     scanCooldown = true;
     setTimeout(() => { scanCooldown = false; }, 3000);
 
@@ -599,11 +684,16 @@
     document.getElementById('product-panel').style.display = 'none';
     currentProduct = null;
 
+    dlog(`Buscando código: ${code}`, 'info');
     showStatus(`🔍 Buscando código ${code}…`, 'info');
 
     try {
-      const res  = await fetch(`https://world.openfoodfacts.org/api/v0/product/${code}.json`);
+      const url = `https://world.openfoodfacts.org/api/v0/product/${code}.json`;
+      dlog(`Fetch: ${url}`, 'info');
+      const res  = await fetch(url);
+      dlog(`Respuesta HTTP: ${res.status}`, res.ok ? 'ok' : 'warn');
       const data = await res.json();
+      dlog(`OFF status: ${data.status}`, data.status === 1 ? 'ok' : 'warn');
 
       if (data.status === 1) {
         const p = data.product;
@@ -613,12 +703,15 @@
           brand:   p.brands || '',
           image:   p.image_small_url || p.image_url || '',
         };
+        dlog(`Producto: ${currentProduct.name}`, 'ok');
         hideStatus();
       } else {
+        dlog(`Código no encontrado en OFF`, 'warn');
         currentProduct = { barcode: code, name: 'Producto desconocido', brand: '', image: '' };
         showStatus(`⚠️ Código ${code} no encontrado en la base de datos. Podés registrarlo igual.`, 'error');
       }
     } catch (err) {
+      dlog(`Error en fetch: ${err}`, 'error');
       currentProduct = { barcode: code, name: 'Producto desconocido', brand: '', image: '' };
       showStatus(`⚠️ Sin conexión. Código: ${code}. Podés registrarlo igual.`, 'error');
     }
@@ -769,6 +862,8 @@
   }
 
   // ── Init ──────────────────────────────────────────────────────────────────
+  dlog(`App iniciada. UserAgent: ${navigator.userAgent.slice(0, 80)}`, 'info');
+  dlog(`html5-qrcode cargado: ${typeof Html5Qrcode !== 'undefined'}`, typeof Html5Qrcode !== 'undefined' ? 'ok' : 'error');
   renderAll();
 </script>
 
