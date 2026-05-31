@@ -891,7 +891,7 @@
       const key = localStorage.getItem('gemini_api_key') || GEMINI_API_KEY;
       if (!key) { dlog('Gemini: no hay API key configurada', 'warn'); return null; }
       dlog('Buscando con Gemini + Google Search...', 'info');
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
