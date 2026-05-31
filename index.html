@@ -782,44 +782,105 @@
     dlog('Cámara detenida', 'info');
   }
 
+  const GOOGLE_API_KEY = 'AIzaSyD7QnW4aDAFTCNAB7GHpaect0O-iOPhxo8';
+  const GOOGLE_CSE_ID  = 'e1a847d2a88184eb3';
+
   // ── Open Food Facts lookup ────────────────────────────────────────────────
   async function lookupBarcode() {
     const code = barcodeInput.value.trim();
     if (!code) return;
 
-    // Ocultar panel anterior si había uno
     document.getElementById('product-panel').style.display = 'none';
+    document.getElementById('name-input-panel').style.display = 'none';
     currentProduct = null;
 
     dlog(`Buscando código: ${code}`, 'info');
-    showStatus(`🔍 Buscando código ${code}…`, 'info');
+    showStatus(`🔍 Buscando ${code}…`, 'info');
 
+    // 1) Open Food Facts
+    const offResult = await tryOpenFoodFacts(code);
+    if (offResult) {
+      currentProduct = offResult;
+      dlog(`Encontrado en OFF: ${offResult.name}`, 'ok');
+      hideStatus();
+      renderProductPanel();
+      return;
+    }
+
+    // 2) Google Custom Search
+    dlog('No encontrado en OFF, buscando en Google...', 'warn');
+    showStatus(`🔍 Buscando en supermercados argentinos…`, 'info');
+    const googleResult = await tryGoogleSearch(code);
+    if (googleResult) {
+      currentProduct = googleResult;
+      dlog(`Encontrado via Google: ${googleResult.name}`, 'ok');
+      hideStatus();
+      renderProductPanel();
+      return;
+    }
+
+    // 3) No encontrado en ninguna fuente
+    dlog('No encontrado en ninguna fuente', 'warn');
+    showNameInputPanel(code);
+  }
+
+  async function tryOpenFoodFacts(code) {
     try {
-      const url = `https://world.openfoodfacts.org/api/v0/product/${code}.json`;
-      dlog(`Fetch: ${url}`, 'info');
-      const res  = await fetch(url);
-      dlog(`Respuesta HTTP: ${res.status}`, res.ok ? 'ok' : 'warn');
+      const res  = await fetch(`https://world.openfoodfacts.org/api/v0/product/${code}.json`);
       const data = await res.json();
       dlog(`OFF status: ${data.status}`, data.status === 1 ? 'ok' : 'warn');
+      if (data.status !== 1) return null;
+      const p = data.product;
+      return {
+        barcode: code,
+        name:    p.product_name || p.product_name_es || 'Producto sin nombre',
+        brand:   p.brands || '',
+        image:   p.image_small_url || p.image_url || '',
+      };
+    } catch (e) {
+      dlog(`Error OFF: ${e}`, 'error');
+      return null;
+    }
+  }
 
-      if (data.status === 1) {
-        const p = data.product;
-        currentProduct = {
-          barcode: code,
-          name:    p.product_name || p.product_name_es || 'Producto sin nombre',
-          brand:   p.brands || '',
-          image:   p.image_small_url || p.image_url || '',
-        };
-        dlog(`Producto: ${currentProduct.name}`, 'ok');
-        hideStatus();
-        renderProductPanel();
-      } else {
-        dlog(`Código no encontrado en OFF`, 'warn');
-        showNameInputPanel(code);
+  async function tryGoogleSearch(code) {
+    try {
+      const query = encodeURIComponent(`${code} producto`);
+      const url   = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CSE_ID}&q=${query}&num=1`;
+      dlog(`Google CSE fetch...`, 'info');
+      const res  = await fetch(url);
+      const data = await res.json();
+
+      if (!res.ok) {
+        dlog(`Google error: ${data?.error?.message}`, 'error');
+        return null;
       }
-    } catch (err) {
-      dlog(`Error en fetch: ${err}`, 'error');
-      showNameInputPanel(code);
+
+      const item = data.items?.[0];
+      if (!item) { dlog('Google: sin resultados', 'warn'); return null; }
+
+      dlog(`Google resultado: ${item.title}`, 'ok');
+
+      // El título del resultado contiene el nombre del producto
+      // Limpiamos el nombre sacando la parte del sitio (ej: "| Coto Digital")
+      const rawName = item.title
+        .replace(/\|.*$/g, '')
+        .replace(/[-–].*$/g, '')
+        .trim();
+
+      // Intentar obtener imagen del snippet
+      const image = item.pagemap?.cse_image?.[0]?.src || '';
+
+      return {
+        barcode: code,
+        name:    rawName || item.title,
+        brand:   '',
+        image,
+        source:  item.displayLink,
+      };
+    } catch (e) {
+      dlog(`Error Google: ${e}`, 'error');
+      return null;
     }
   }
 
