@@ -844,45 +844,84 @@
   }
 
   async function tryGoogleSearch(code) {
-    try {
-      const query = encodeURIComponent(`${code} producto`);
-      const url   = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_API_KEY}&cx=${GOOGLE_CSE_ID}&q=${query}&num=1`;
-      dlog(`Google CSE fetch...`, 'info');
-      const res  = await fetch(url);
-      const data = await res.json();
+    // Intentar varios supermercados via proxy CORS
+    const sources = [
+      { name: 'Coto',  fn: () => tryCoto(code)  },
+      { name: 'Jumbo', fn: () => tryJumbo(code)  },
+    ];
 
-      if (!res.ok) {
-        const errBody = JSON.stringify(data?.error || data);
-        dlog(`Google HTTP ${res.status}: ${errBody}`, 'error');
-        return null;
+    for (const src of sources) {
+      dlog(`Buscando en ${src.name}...`, 'info');
+      try {
+        const result = await src.fn();
+        if (result) {
+          dlog(`Encontrado en ${src.name}: ${result.name}`, 'ok');
+          return result;
+        }
+        dlog(`${src.name}: sin resultado`, 'warn');
+      } catch(e) {
+        dlog(`${src.name} error: ${e}`, 'error');
       }
-
-      const item = data.items?.[0];
-      if (!item) { dlog('Google: sin resultados', 'warn'); return null; }
-
-      dlog(`Google resultado: ${item.title}`, 'ok');
-
-      // El título del resultado contiene el nombre del producto
-      // Limpiamos el nombre sacando la parte del sitio (ej: "| Coto Digital")
-      const rawName = item.title
-        .replace(/\|.*$/g, '')
-        .replace(/[-–].*$/g, '')
-        .trim();
-
-      // Intentar obtener imagen del snippet
-      const image = item.pagemap?.cse_image?.[0]?.src || '';
-
-      return {
-        barcode: code,
-        name:    rawName || item.title,
-        brand:   '',
-        image,
-        source:  item.displayLink,
-      };
-    } catch (e) {
-      dlog(`Error Google: ${e}`, 'error');
-      return null;
     }
+    return null;
+  }
+
+  async function tryCoto(code) {
+    const target = `https://www.cotodigital3.com.ar/sitios/cdigi/browse?_dyncharset=utf-8&Ntt=${code}&Dy=1&Nty=1&Ntk=All&Nrpp=1`;
+    const proxy  = `https://api.allorigins.win/get?url=${encodeURIComponent(target)}`;
+    dlog(`Coto proxy fetch...`, 'info');
+    const res  = await fetch(proxy);
+    const data = await res.json();
+    dlog(`Coto HTTP ${res.status}, contents length: ${data?.contents?.length}`, res.ok ? 'info' : 'warn');
+    if (!data?.contents) return null;
+
+    // Parsear HTML buscando el nombre del producto
+    const parser = new DOMParser();
+    const doc    = parser.parseFromString(data.contents, 'text/html');
+
+    // Coto usa span.descrip_full o .product_name
+    const selectors = ['.descrip_full', '.product-name', 'h1.product_name', '.product_title', 'span[itemprop="name"]'];
+    for (const sel of selectors) {
+      const el = doc.querySelector(sel);
+      if (el?.textContent?.trim()) {
+        const name = el.textContent.trim();
+        dlog(`Coto selector "${sel}": ${name}`, 'ok');
+        return { barcode: code, name, brand: '', image: '' };
+      }
+    }
+
+    // Fallback: buscar en el título de la página
+    const title = doc.querySelector('title')?.textContent?.trim();
+    dlog(`Coto title: ${title}`, 'info');
+    if (title && !title.toLowerCase().includes('coto') && title.length > 5) {
+      return { barcode: code, name: title.replace(/[\|\-].*$/, '').trim(), brand: '', image: '' };
+    }
+
+    return null;
+  }
+
+  async function tryJumbo(code) {
+    const target = `https://www.jumbo.com.ar/${code}/p`;
+    const proxy  = `https://api.allorigins.win/get?url=${encodeURIComponent(target)}`;
+    dlog(`Jumbo proxy fetch...`, 'info');
+    const res  = await fetch(proxy);
+    const data = await res.json();
+    dlog(`Jumbo HTTP ${res.status}, contents length: ${data?.contents?.length}`, res.ok ? 'info' : 'warn');
+    if (!data?.contents) return null;
+
+    const parser = new DOMParser();
+    const doc    = parser.parseFromString(data.contents, 'text/html');
+
+    const selectors = ['h1.productName', '.product-name h1', 'h1[class*="product"]', 'h1'];
+    for (const sel of selectors) {
+      const el = doc.querySelector(sel);
+      if (el?.textContent?.trim()) {
+        const name = el.textContent.trim();
+        dlog(`Jumbo selector "${sel}": ${name}`, 'ok');
+        return { barcode: code, name, brand: '', image: '' };
+      }
+    }
+    return null;
   }
 
   function showNameInputPanel(code) {
