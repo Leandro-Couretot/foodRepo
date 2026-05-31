@@ -897,9 +897,9 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{
-            parts: [{ text: `Buscá el código de barras EAN "${code}" en internet (supermercados argentinos, Open Food Facts, cualquier tienda online o base de datos de productos). Dame el nombre completo del producto incluyendo marca y variedad (por ejemplo: "Leche La Serenísima Entera 1L"). Si definitivamente no encontrás nada, respondé exactamente: NO_ENCONTRADO` }]
+            parts: [{ text: `Buscá en Google el código de barras EAN ${code}. En los resultados vas a encontrar el nombre del producto en tiendas argentinas (Coto, Atomo, Supertop, etc.). Respondé ÚNICAMENTE con el nombre completo del producto tal como aparece en la tienda (marca + nombre + cantidad, ej: "Gelatina Exquisita Light Durazno 25g"). Sin explicaciones. Sin comillas. Si no hay ningún resultado en Google, respondé: NO_ENCONTRADO` }]
           }],
-          tools: [{ google_search: {} }],
+          tools: [{ googleSearch: {} }],
           generationConfig: { maxOutputTokens: 500, temperature: 0 }
         })
       });
