@@ -105,11 +105,18 @@
 
     #camera-container.visible { display: block; }
 
-    #camera-video {
-      width: 100%;
+    /* Quagga inyecta video y canvas dentro de #quagga-target */
+    #quagga-target { position: relative; width: 100%; }
+    #quagga-target video,
+    #quagga-target canvas {
+      width: 100% !important;
+      max-height: 55vw;
       display: block;
-      max-height: 60vh;
       object-fit: cover;
+    }
+    #quagga-target canvas.drawingBuffer {
+      position: absolute;
+      top: 0; left: 0;
     }
 
     /* scanning overlay box */
@@ -488,9 +495,9 @@
       <button id="manual-btn">Buscar</button>
     </div>
 
-    <!-- Camera viewer -->
+    <!-- Camera viewer — Quagga inyecta su propio <video> acá -->
     <div id="camera-container">
-      <video id="camera-video" autoplay playsinline muted></video>
+      <div id="quagga-target"></div>
       <div class="scan-overlay"></div>
     </div>
     <p class="camera-hint" id="camera-hint" style="display:none">Apuntá la cámara al código de barras</p>
@@ -667,7 +674,7 @@
       inputStream: {
         name: 'Live',
         type: 'LiveStream',
-        target: document.getElementById('camera-video').parentElement,
+        target: document.getElementById('quagga-target'),
         constraints: {
           facingMode: 'environment',
           width:  { min: 640, ideal: 1280 },
