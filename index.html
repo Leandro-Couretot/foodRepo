@@ -846,19 +846,31 @@
       return;
     }
 
-    // 2) Google Custom Search
-    dlog('No encontrado en OFF, buscando en Google...', 'warn');
-    showStatus(`🔍 Buscando en supermercados argentinos…`, 'info');
-    const googleResult = await tryGoogleSearch(code);
-    if (googleResult) {
-      currentProduct = googleResult;
-      dlog(`Encontrado via Google: ${googleResult.name}`, 'ok');
+    // 2) Coto Digital autocomplete
+    dlog('No encontrado en OFF, buscando en Coto Digital...', 'warn');
+    showStatus(`🔍 Buscando en Coto Digital…`, 'info');
+    const cotoResult = await tryCotoDigital(code);
+    if (cotoResult) {
+      currentProduct = cotoResult;
+      dlog(`Encontrado en Coto: ${cotoResult.name}`, 'ok');
       hideStatus();
       renderProductPanel();
       return;
     }
 
-    // 3) No encontrado en ninguna fuente
+    // 3) Gemini + Google Search como último recurso
+    dlog('No encontrado en Coto, buscando con Gemini...', 'warn');
+    showStatus(`🔍 Buscando con IA…`, 'info');
+    const googleResult = await tryGoogleSearch(code);
+    if (googleResult) {
+      currentProduct = googleResult;
+      dlog(`Encontrado via Gemini: ${googleResult.name}`, 'ok');
+      hideStatus();
+      renderProductPanel();
+      return;
+    }
+
+    // 4) No encontrado en ninguna fuente
     dlog('No encontrado en ninguna fuente', 'warn');
     showNameInputPanel(code);
   }
@@ -878,6 +890,28 @@
       };
     } catch (e) {
       dlog(`Error OFF: ${e}`, 'error');
+      return null;
+    }
+  }
+
+  async function tryCotoDigital(code) {
+    try {
+      dlog('Buscando en Coto Digital...', 'info');
+      const url = `https://ac.cnstrc.com/autocomplete/${encodeURIComponent(code)}?num_results=4&key=key_r6xzz4IAoTWcipni&_dt=${Date.now()}`;
+      const res = await fetch(url);
+      if (!res.ok) { dlog(`Coto HTTP ${res.status}`, 'error'); return null; }
+      const data = await res.json();
+      const product = data?.sections?.Products?.[0];
+      if (!product) { dlog('Coto: sin resultados', 'warn'); return null; }
+      dlog(`Coto encontró: ${product.value}`, 'ok');
+      return {
+        barcode: code,
+        name:    product.value,
+        brand:   product.data?.product_brand || '',
+        image:   product.data?.image_url || '',
+      };
+    } catch (e) {
+      dlog(`Error Coto: ${e}`, 'error');
       return null;
     }
   }
