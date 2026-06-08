@@ -897,7 +897,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{
-            parts: [{ text: `Buscá en Google el código de barras EAN ${code}. En los resultados vas a encontrar el nombre del producto en tiendas argentinas (Coto, Atomo, Supertop, etc.). Respondé ÚNICAMENTE con el nombre completo del producto tal como aparece en la tienda (marca + nombre + cantidad, ej: "Gelatina Exquisita Light Durazno 25g"). Sin explicaciones. Sin comillas. Si no hay ningún resultado en Google, respondé: NO_ENCONTRADO` }]
+            parts: [{ text: `Buscá en Google el código de barras EAN ${code} para identificar qué producto es. Respondé ÚNICAMENTE con el nombre completo del producto (marca + nombre + cantidad, ej: "Gelatina Exquisita Light Durazno 25g"). Sin explicaciones. Sin comillas. Si no encontrás el producto, respondé: NO_ENCONTRADO` }]
           }],
           tools: [{ google_search: {} }],
           generationConfig: { maxOutputTokens: 500, temperature: 1.0 }
