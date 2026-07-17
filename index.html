@@ -688,6 +688,8 @@
 
   // ── Camera (Quagga2 — pure JS, any browser) ──────────────────────────────
   let quaggaRunning = false;
+  let recentDetections = [];
+  const CONSENSUS_REQUIRED = 3;
 
   async function toggleCamera() {
     if (cameraOpen) { stopCamera(); } else { await startCamera(); }
@@ -737,9 +739,13 @@
         },
       },
       decoder: {
-        readers: ['ean_reader','ean_8_reader','upc_reader','upc_e_reader','code_128_reader','code_39_reader'],
+        // Solo EAN: los productos de supermercado en Argentina usan EAN-13/EAN-8.
+        // Tener varios formatos habilitados a la vez hacía que Quagga confundiera
+        // las mismas barras con Code128/Code39 y devolviera un número distinto en cada lectura.
+        readers: ['ean_reader','ean_8_reader'],
         multiple: false,
       },
+      locator: { patchSize: 'medium', halfSample: true },
       locate: true,
       numOfWorkers: 0,
     }, err => {
@@ -751,6 +757,7 @@
         return;
       }
       dlog('Quagga iniciado, escaneando...', 'ok');
+      recentDetections = [];
       Quagga.start();
       quaggaRunning = true;
       btn.classList.add('active');
@@ -785,11 +792,25 @@
         }
       }
 
-      dlog(`Código aceptado: ${code}`, 'ok');
+      // Exigir varias lecturas seguidas iguales antes de aceptar el código.
+      // Una sola lectura puede pasar el checksum por casualidad (glare, blur, ángulo).
+      recentDetections.push(code);
+      if (recentDetections.length > CONSENSUS_REQUIRED) recentDetections.shift();
+
+      const consensus = recentDetections.length === CONSENSUS_REQUIRED &&
+        recentDetections.every(c => c === code);
+
+      if (!consensus) {
+        dlog(`Código candidato: ${code} (${recentDetections.length}/${CONSENSUS_REQUIRED})`, 'info');
+        return;
+      }
+
+      dlog(`Código confirmado por consenso: ${code}`, 'ok');
 
       if (scanCooldown) return;
       scanCooldown = true;
       setTimeout(() => { scanCooldown = false; }, 3000);
+      recentDetections = [];
       stopCamera();
       barcodeInput.value = code;
       lookupBarcode();
@@ -808,6 +829,8 @@
     const container = document.getElementById('camera-container');
     const hint      = document.getElementById('camera-hint');
     const btn       = document.getElementById('camera-btn');
+
+    recentDetections = [];
 
     if (quaggaRunning && window.Quagga) {
       try { Quagga.stop(); } catch(e) { dlog(`Error stop: ${e}`, 'warn'); }
