@@ -893,8 +893,20 @@
       return;
     }
 
+    // 4) Jumbo (cubre también Disco y Vea, que comparten el mismo catálogo)
+    dlog('No encontrado en Carrefour, buscando en Jumbo...', 'warn');
+    showStatus(`🔍 Buscando en Jumbo…`, 'info');
+    const jumboResult = await tryJumbo(code);
+    if (jumboResult) {
+      currentProduct = jumboResult;
+      dlog(`Encontrado en Jumbo: ${jumboResult.name}`, 'ok');
+      hideStatus();
+      renderProductPanel();
+      return;
+    }
+
     // 5) Gemini + Google Search como último recurso
-    dlog('No encontrado en Carrefour, buscando con Gemini...', 'warn');
+    dlog('No encontrado en Jumbo, buscando con Gemini...', 'warn');
     showStatus(`🔍 Buscando con IA…`, 'info');
     const googleResult = await tryGoogleSearch(code);
     if (googleResult) {
@@ -951,17 +963,17 @@
     }
   }
 
-  const CARREFOUR_PROXY = 'https://carrefour-ean-proxy.pluxow-ideasverdesymas.workers.dev';
+  const VTEX_PROXY = 'https://carrefour-ean-proxy.pluxow-ideasverdesymas.workers.dev';
 
-  async function tryCarrefour(code) {
+  async function tryVtexSite(code, site, label) {
     try {
-      dlog('Buscando en Carrefour...', 'info');
-      const res = await fetch(`${CARREFOUR_PROXY}?ean=${encodeURIComponent(code)}`);
-      if (!res.ok) { dlog(`Carrefour HTTP ${res.status}`, 'error'); return null; }
+      dlog(`Buscando en ${label}...`, 'info');
+      const res = await fetch(`${VTEX_PROXY}?ean=${encodeURIComponent(code)}&site=${site}`);
+      if (!res.ok) { dlog(`${label} HTTP ${res.status}`, 'error'); return null; }
       const data = await res.json();
       const product = data?.[0];
-      if (!product) { dlog('Carrefour: sin resultados', 'warn'); return null; }
-      dlog(`Carrefour encontró: ${product.productName}`, 'ok');
+      if (!product) { dlog(`${label}: sin resultados`, 'warn'); return null; }
+      dlog(`${label} encontró: ${product.productName}`, 'ok');
       return {
         barcode: code,
         name:    product.productName,
@@ -969,10 +981,13 @@
         image:   product.items?.[0]?.images?.[0]?.imageUrl || '',
       };
     } catch (e) {
-      dlog(`Error Carrefour: ${e}`, 'error');
+      dlog(`Error ${label}: ${e}`, 'error');
       return null;
     }
   }
+
+  const tryCarrefour = code => tryVtexSite(code, 'carrefour', 'Carrefour');
+  const tryJumbo     = code => tryVtexSite(code, 'jumbo', 'Jumbo');
 
   async function tryGoogleSearch(code) {
     return await tryGemini(code);
